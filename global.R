@@ -1,3 +1,7 @@
+library(dplyr)
+library(tidyverse)
+library(arrow)
+
 # PREDICTION: Creates osasimulation
 create_osapred <- function(locations=c("Albania","Armenia","Austria","Azerbaijan","Belarus","Belgium","Bosnia and Herzegovina","Bulgaria","Croatia","Cyprus","Denmark","Estonia","Finland","France","Georgia","Germany","Greece","Hungary","Iceland","Ireland","Italy","Kazakhstan","Latvia","Lithuania","Luxembourg","Malta","Montenegro","Netherlands","Norway","Poland","Portugal","Romania","Serbia","Slovakia","Slovenia","Spain","Sweden","Switzerland","Turkey","Ukraine","United Kingdom" ), 
                            prevalence_start = NA,
