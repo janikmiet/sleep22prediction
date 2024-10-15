@@ -1,0 +1,1261 @@
+---
+title: "Sleep Apnea Estimation"
+author: "ver1.91"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    social: menu
+    source_code: 'https://osacost.com'
+    theme: 
+      version: 4
+      bootswatch: lux
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(plotly)
+library(RColorBrewer)
+library(hrbrthemes)
+library(tidyverse)
+library(dplyr)
+library(paletteer)
+library(scales)
+
+options(scipen = 999)
+limit_years <- c(2022, 2035) ## limiting years shown in application
+
+## Colors and themes 
+f1 <- function(num) { format(num, big.mark = ' ')}
+color_main <- "#949FD9"
+pal_sex <- c("#ED5200", "#3B99B1")
+pal_age_group <- paletteer_c("ggthemes::Sunset-Sunrise Diverging", 16)
+pal_intervention <- c("#007FB6", "#DE6974")
+custom_theme01 <- 
+  hrbrthemes::theme_ipsum() +
+  theme(legend.position = "none", 
+        axis.title.x = element_text(
+          size = 14,
+          # face = "bold"
+        ),
+        axis.title.y = element_text(
+          size = 14,
+        ),
+        axis.text.x = element_text(
+          size=14, 
+          angle=0),
+        axis.text.y = element_text(
+          size=14, 
+          angle=0))
+custom_theme02 <- 
+  hrbrthemes::theme_ipsum() +
+  theme(
+    axis.title.x = element_text(
+          size = 14,
+        ),
+        axis.title.y = element_text(
+          size = 14,
+        ),
+    axis.text.x = element_text(
+      size=14, 
+      angle=0),
+    axis.text.y = element_text(
+      size=14, 
+      angle=0))
+```
+
+
+```{r datas, include=FALSE}
+## Base data
+data_folder <- "data/"
+dat <-  read_parquet(paste0(data_folder, "osasimulation.parquet"))
+benj <- read_parquet(paste0(data_folder, "osa_benjafield.parquet"))
+gdp <-  read_parquet(paste0(data_folder, "gdp.parquet"))
+
+
+## Reactives
+dat_new <- eventReactive(input$do, {
+  ## GDP
+  gdp_data <- gdp %>% 
+    mutate(
+      gdp_index = case_when(
+        input$gdp == "GDP 2022" ~ index_2022,
+        input$gdp == "GDP 2021" ~ index_2021,
+        input$gdp == "GDP 2020" ~ index_2020,
+        TRUE ~ 1
+      ) 
+    ) %>% 
+    select(location_name, gdp_index)
+  ## Calculate new data
+  d1 <- dat %>% filter(location_name != input$cntry)
+  d2 <- create_osapred(locations = input$cntry,
+                       prevalence_start = input$prevalence / 100,
+                       prevalence_limit = input$prevalence_limit / 100,
+                       incidence_male = input$inci_male / 100,
+                       incidence_female = input$inci_female / 100,
+                       years = c(2020,2035))
+  d <- d1 %>% 
+    rbind(d2) %>% 
+    left_join(gdp_data, by = "location_name") %>%
+    mutate(
+      total_cost = total_cost * gdp_index,
+      total_cost_patient = total_cost_patient * gdp_index,
+      total_cost0v = total_cost0v * gdp_index,
+      total_cost_patient_0v = total_cost_patient_0v * gdp_index,
+      total_cost1v = total_cost1v * gdp_index,
+      total_cost_patient_1v = total_cost_patient_1v * gdp_index,
+      total_cost2v = total_cost2v * gdp_index,
+      total_cost_patient_2v = total_cost_patient_2v * gdp_index,
+      total_cost99v = total_cost99v * gdp_index,
+      total_cost_patient_99v = total_cost_patient_99v * gdp_index
+    )  %>% 
+    filter(year_id >= limit_years[1] & year_id <= limit_years[2])
+  return(d) 
+},
+ignoreNULL = FALSE
+)
+## daggr1: location_name, year_id
+daggr1 <- reactive({
+  dat_new() %>% 
+    group_by(location_name, year_id) %>%
+    summarise(
+      pop = sum(pop, na.rm = T),
+      pop_osa = sum(pop_osa, na.rm = T),
+      n_osa_0v = sum(n_osa_0v, na.rm = T),
+      n_osa_1v = sum(n_osa_1v, na.rm = T),
+      n_osa_2v = sum(n_osa_2v, na.rm = T),
+      n_osa_99v = sum(n_osa_99v, na.rm = T),
+      total_cost= round(sum(total_cost, na.rm=T), 0),
+      total_cost0v = sum(total_cost0v, na.rm=T),
+      total_cost1v = sum(total_cost1v, na.rm=T),
+      total_cost2v = sum(total_cost2v, na.rm=T),
+      total_cost99v = sum(total_cost99v, na.rm=T),
+    ) %>% 
+    mutate(
+      pct_osa_0v = n_osa_0v / pop,
+      pct_osa_1v = n_osa_1v / pop,
+      pct_osa_2v = n_osa_2v / pop,
+      pct_osa_99v = n_osa_99v / pop,
+      prevalence = round(pop_osa / pop, 3),
+      incidence = round(n_osa_0v / pop, 3),
+      cost_patient= round(total_cost/pop_osa, 0),
+      cost_0v_patient = total_cost0v / n_osa_0v,
+      cost_1v_patient =  total_cost1v / n_osa_1v,
+      cost_2v_patient =  total_cost2v / n_osa_2v,
+      cost_99v_patient =  total_cost99v / (n_osa_99v),
+      change_cost = total_cost - lag(total_cost),
+      change_cost_pct = round(100 * change_cost / total_cost, 1),
+      change_cost_patient = cost_patient - lag(cost_patient),
+      change_patient = pop_osa - lag(pop_osa),
+    ) %>% 
+    mutate(
+      change_cost_pct = ifelse(change_cost_pct >= 0, paste0("+",change_cost_pct), paste0("",change_cost_pct)),
+    )
+})
+## daggr: location_name, year_id, sex
+daggr2 <- reactive({
+  dat_new() %>% 
+    group_by(location_name, year_id, sex) %>% 
+    summarise(
+      pop = sum(pop, na.rm = T),
+      pop_osa = sum(pop_osa, na.rm = T),
+      n_osa_0v = sum(n_osa_0v, na.rm = T),
+      n_osa_1v = sum(n_osa_1v, na.rm = T),
+      n_osa_2v = sum(n_osa_2v, na.rm = T),
+      n_osa_99v = sum(n_osa_99v, na.rm = T),
+      total_cost= round(sum(total_cost, na.rm=T), 0),
+      total_cost0v = sum(total_cost0v, na.rm=T),
+      total_cost1v = sum(total_cost1v, na.rm=T),
+      total_cost2v = sum(total_cost2v, na.rm=T),
+      total_cost99v = sum(total_cost99v, na.rm=T),
+    ) %>% 
+    mutate(
+      pct_osa_0v = n_osa_0v / pop,
+      pct_osa_1v = n_osa_1v / pop,
+      pct_osa_2v = n_osa_2v / pop,
+      pct_osa_99v = n_osa_99v / pop,
+      prevalence = round(pop_osa / pop, 3),
+      incidence = round(n_osa_0v / pop, 3),
+      cost_patient= round(total_cost/pop_osa, 0),
+      cost_0v_patient = total_cost0v / n_osa_0v,
+      cost_1v_patient =  total_cost1v / n_osa_1v,
+      cost_2v_patient =  total_cost2v / n_osa_2v,
+      cost_99v_patient =  total_cost99v / (n_osa_99v),
+      change_cost = total_cost - lag(total_cost),
+      change_cost_patient = cost_patient - lag(cost_patient),
+      change_patient = pop_osa - lag(pop_osa),
+    ) 
+})
+## daggr: location_name, year_id, age_group_name
+daggr3 <- reactive({
+  dat_new() %>% 
+    group_by(location_name, year_id, age_group_name) %>% 
+    summarise(
+      pop = sum(pop, na.rm = T),
+      pop_osa = sum(pop_osa, na.rm = T),
+      n_osa_0v = sum(n_osa_0v, na.rm = T),
+      n_osa_1v = sum(n_osa_1v, na.rm = T),
+      n_osa_2v = sum(n_osa_2v, na.rm = T),
+      n_osa_99v = sum(n_osa_99v, na.rm = T),
+      total_cost= round(sum(total_cost, na.rm=T), 0),
+      total_cost0v = sum(total_cost0v, na.rm=T),
+      total_cost1v = sum(total_cost1v, na.rm=T),
+      total_cost2v = sum(total_cost2v, na.rm=T),
+      total_cost99v = sum(total_cost99v, na.rm=T),
+    ) %>% 
+    mutate(
+      pct_osa_0v = n_osa_0v / pop,
+      pct_osa_1v = n_osa_1v / pop,
+      pct_osa_2v = n_osa_2v / pop,
+      pct_osa_99v = n_osa_99v / pop,
+      prevalence = round(pop_osa / pop, 3),
+      incidence = round(n_osa_0v / pop, 3),
+      cost_patient= round(total_cost/pop_osa, 0),
+      cost_0v_patient = total_cost0v / n_osa_0v,
+      cost_1v_patient =  total_cost1v / n_osa_1v,
+      cost_2v_patient =  total_cost2v / n_osa_2v,
+      cost_99v_patient =  total_cost99v / (n_osa_99v),
+      change_cost = total_cost - lag(total_cost),
+      change_cost_patient = cost_patient - lag(cost_patient),
+      change_patient = pop_osa - lag(pop_osa),
+    ) 
+})
+
+## intervention dataset and compare
+dat_intervention <- eventReactive(input$do, {
+  ## Normi data
+  d1 <- dat_new() %>% 
+    filter(location_name == input$cntry) %>% 
+    mutate(type = "normal")
+  ## Tehdään interventio data
+  d2 <- create_osapred(locations = input$cntry,
+                       prevalence_start = input$prevalence / 100,
+                       prevalence_limit = input$prevalence_limit / 100,
+                       incidence_male = input$inci_male / 100,
+                       incidence_female = input$inci_female / 100,
+                       years = c(2020,2035),
+                       intervention=input$intervention)
+  d2$type <- "intervention"
+  d2 <- d2 %>% 
+    filter(year_id >= limit_years[1] & year_id <= limit_years[2])
+  ## Lisataan GDP interventiodataan
+  gdp_data <- gdp %>% 
+    mutate(
+      gdp_index = case_when(
+        input$gdp == "GDP 2022" ~ index_2022,
+        input$gdp == "GDP 2021" ~ index_2021,
+        input$gdp == "GDP 2020" ~ index_2020,
+        TRUE ~ 1
+      ) 
+    ) %>% 
+    select(location_name, gdp_index)
+  d2 <- d2 %>% 
+    left_join(gdp_data, by = "location_name") %>% 
+     mutate(
+      total_cost = total_cost * gdp_index,
+      total_cost_patient = total_cost_patient * gdp_index,
+      total_cost0v = total_cost0v * gdp_index,
+      total_cost_patient_0v = total_cost_patient_0v * gdp_index,
+      total_cost1v = total_cost1v * gdp_index,
+      total_cost_patient_1v = total_cost_patient_1v * gdp_index,
+      total_cost2v = total_cost2v * gdp_index,
+      total_cost_patient_2v = total_cost_patient_2v * gdp_index,
+      total_cost99v = total_cost99v * gdp_index,
+      total_cost_patient_99v = total_cost_patient_99v * gdp_index
+    ) 
+  ## Tehdään normi-interventio vertailu
+  ## Halutaan nähdä erovaisuudet per vuosi
+  d <- d1 %>% 
+    rbind(d2) 
+  return(d)
+},
+ignoreNULL = FALSE
+)
+
+```
+
+Sidebar {.sidebar}
+=======================================================================
+
+
+```{r}
+# Countries
+shiny::selectInput("cntry", "Select Country:", 
+                   choices = c("Albania",
+                               "Armenia",
+                               "Austria",
+                               "Azerbaijan",
+                               "Belarus",
+                               "Belgium",
+                               "Bosnia and Herzegovina",
+                               "Bulgaria",
+                               "Croatia",
+                               "Cyprus",
+                               "Denmark",
+                               "Estonia",
+                               "Finland",
+                               "France",
+                               "Georgia",
+                               "Germany",
+                               "Greece",
+                               "Hungary",
+                               "Iceland",
+                               "Ireland",
+                               "Italy",
+                               "Kazakhstan",
+                               "Latvia",
+                               "Lithuania",
+                               "Luxembourg",
+                               "Malta",
+                               "Montenegro",
+                               "Netherlands",
+                               "Norway",
+                               "Poland",
+                               "Portugal",
+                               "Romania",
+                               "Serbia",
+                               "Slovakia",
+                               "Slovenia",
+                               "Spain",
+                               "Sweden",
+                               "Switzerland",
+                               "Turkey",
+                               "Ukraine",
+                               "United Kingdom" ), 
+                   selected = "Finland")
+
+## Update input values when country selected
+observeEvent(input$cntry, {
+  ## Prevalences
+  x <- benj %>% filter(location_name == input$cntry) %>% select(`Moderate-Severe`) %>% pull()
+  updateNumericInput(session, "prevalence", value = round(x*100,4))
+  ## Incidences
+  incidence_male <- daggr2() %>% 
+    filter(location_name == input$cntry & year_id == 2020 & sex == "male") %>% 
+    select(incidence) %>% 
+    pull()
+  incidence_female <- daggr2() %>% 
+    filter(location_name == input$cntry & year_id == 2020 & sex == "female") %>% 
+    select(incidence) %>% 
+    pull()
+  updateSliderInput(session, "inci_male", value = 100*incidence_male)
+  updateSliderInput(session, "inci_female", value = 100*incidence_female)
+  
+})
+
+
+## Sliders and etc
+shiny::sliderInput(inputId = "prevalence",  round = TRUE,
+                    label = "Starting prevalence (in 2020):", 
+                    value = 29.50, 
+                    min = 1, 
+                    max = 80.00, 
+                    step = 0.01)
+shiny::sliderInput(inputId = "prevalence_limit",  round = TRUE,
+                    label = "Limit max prevalence:", 
+                    value = 80, 
+                    min = 1, 
+                    max = 100, 
+                    step = 1)
+shiny::sliderInput(inputId = "inci_male", 
+                   label = "Total Incidence male:", 
+                   min = 0.00, 
+                   max=5.0, 
+                   value = 1.1, 
+                   step = 0.1)
+shiny::sliderInput(inputId = "inci_female", 
+                   label = "Total Incidence female:", 
+                   min = 0.0, 
+                   max=5.0, 
+                   value = 0.7, 
+                   step = 0.1)
+shiny::radioButtons("gdp", 
+                    label = "Money correction: ", 
+                    choices = c("GDP 2022", "GDP 2021", "GDP 2020", "Off"), 
+                    selected = "GDP 2022")
+shiny::radioButtons("intervention", 
+                    label = "Intervention (Women expenses as men): ", 
+                    choices = c("Yes" = TRUE, 
+                                "No" = FALSE), 
+                    selected = "TRUE")
+shiny::actionButton(inputId = "do", label = "Calculate") 
+
+```
+
+
+Summary
+=======================================================================
+
+
+Row
+-----------------------------------------------------------------------
+
+### Total Incidence (fixed) {.value-box}
+
+```{r}
+renderValueBox({
+  valueBox(
+    color = color_main,
+    value = paste0(round(100 * mean(daggr1()$incidence[daggr1()$location_name == input$cntry], na.rm = T), 2), " %"), 
+    icon = "fa-person")
+})
+
+```
+
+
+### Average Patient Increase Yearly {.value-box}
+
+```{r}
+
+renderValueBox({
+  valueBox(
+    color = color_main,
+    value = f1(round(mean(daggr1()$change_patient[daggr1()$location_name == input$cntry], na.rm = T), -1)), 
+    icon = "fa-users")
+})
+```
+
+### Average Total Cost Increase Yearly {.value-box}
+
+```{r}
+renderValueBox({
+  valueBox( 
+    color = color_main,
+    value = paste0(f1(round(mean(daggr1()$change_cost[daggr1()$location_name == input$cntry], na.rm = T), -1)), " €"), 
+    icon = "fa-money"#,
+    # color = if (rate >= input$rateThreshold) "warning" else "primary"
+  )
+})
+```
+
+### Average Euros per Patient Cost Increase Yearly {.value-box}
+
+```{r}
+renderValueBox({
+  valueBox(
+    color = color_main,
+    value = paste0(round(mean(daggr1()$change_cost_patient[daggr1()$location_name == input$cntry], na.rm = T), 1), " €"), 
+    icon = "fa-money")
+})
+
+```
+
+
+Row {.tabset .tabset-fade data-height=550, data-width=700}
+-----------------------------------------------------------------------
+
+### Prediction Overview {data-width=700}
+
+```{r}
+renderPlot({
+  ggplot(data = daggr1()) +
+    geom_line(data=daggr1()[daggr1()$location_name != input$cntry, ], aes(x=year_id, y = 100 * prevalence, group = location_name), linetype="dashed", color = "#A5A5A5") +
+    geom_line(data=daggr1()[daggr1()$location_name == input$cntry, ],aes(x=year_id, y = 100 * prevalence, group = location_name), colour = color_main, linewidth=1.5) +
+    geom_point(data=daggr1()[daggr1()$location_name == input$cntry, ],aes(x=year_id, y = 100 * prevalence, group = location_name), colour = color_main, size = 3) +
+    scale_x_continuous(limits = c(limit_years[1], limit_years[2]+1),
+                       breaks = seq(limit_years[1], limit_years[2], 1) ) +
+    # scale_y_continuous(limits = c(0, input$prevalence_limit)) +
+    labs(title = paste0(input$cntry, " Sleep Apnea Prevalence Estimation"), subtitle = paste0("Starting prevalence (2020) ", input$prevalence, " %"), x="", y = "prevalence (%)") +
+    geom_text(data = subset(daggr1()[daggr1()$location_name != input$cntry, ], year_id == "2035"), aes(label = location_name, x = limit_years[2], y = 100 * prevalence), colour = "#A5A5A5", hjust = -.1) +
+    geom_text(data = subset(daggr1()[daggr1()$location_name == input$cntry, ], year_id == "2035"), aes(label = location_name, x = limit_years[2], y = 100 * prevalence), hjust = -.1,  size=11, colour = "#5C648C") + 
+    custom_theme01
+})
+
+```
+
+
+### Incidence Distribution
+
+```{r}
+renderPlot({
+  dplot <- dat_new() %>% filter(year_id == limit_years[1] & location_name == input$cntry)
+  
+  ## Incidence first year age plot
+  ggplot(dplot) +
+    geom_line(aes(x=age_group_name, y=100*incidence, group=sex, color=sex)) +
+    geom_point(aes(x=age_group_name, y=100*incidence, group=sex, color=sex)) +
+    labs(title = "Incidence distribution", subtitle =  "fixed over the years", x="Age Group", y= "incidence (%)") +
+    scale_colour_manual(values = pal_sex) +
+    scale_y_continuous(limits = c(0, 12.0), breaks = c(2,4,6,8,10,12)) +
+    custom_theme01
+  
+})
+```
+
+
+
+### Total Population 
+
+```{r}
+## Population picture over the timeline
+renderPlot({
+  dplot <- dat_new() %>% 
+    filter(location_name == input$cntry) %>% 
+    select(location_name, year_id, sex, age_group_name, pop) %>% 
+    group_by(location_name, year_id, age_group_name) %>% 
+    mutate(pop = sum(pop),
+           pop = as.integer(pop))
+  ## PLot
+  ggplot(data = dplot) +
+    geom_area(aes(x=age_group_name, y=pop, group=year_id, fill = year_id), position = position_dodge(), alpha = 0.15) +
+    geom_line(aes(x=age_group_name, y=pop, group=year_id, color = year_id), alpha = 0.15 ) +
+    scale_fill_paletteer_c("grDevices::Harmonic", name = "Year") +
+    scale_color_paletteer_c("grDevices::Harmonic", name = "Year") +
+    scale_y_continuous(labels = comma_format(big.mark = " ", decimal.mark = ",")) +
+    labs(x="Age", y="", title = paste0("Predicted ", input$cntry, " Population"), subtitle = "Change over the years by age groups", fill = "Year") +
+    custom_theme02 #+
+    # theme(legend.position = "right")
+})
+```
+
+
+
+
+Row
+-----------------------------------------------------------------------
+
+### Cost Overview {data-width=700}
+
+```{r}
+renderPlot({
+  d <- daggr1()[daggr1()$location_name == input$cntry, ]
+  ggplot(d) +
+    geom_bar(aes(x=year_id, y=total_cost), fill = "#00897B", stat="identity") +
+    geom_text(data = d %>% filter(year_id != limit_years[1]),
+              aes(x=year_id, 
+                  y=total_cost, 
+                  label=paste0(change_cost_pct, " %")), 
+              vjust=-0.2) +
+    scale_x_continuous(limits = c(limit_years[1]-1,limit_years[2]+1), breaks = seq(limit_years[1], limit_years[2],1)) +
+    scale_y_continuous(limits = c(0, max(d$total_cost)*1.2), 
+                     labels = comma_format(big.mark = " ",
+                                           decimal.mark = ",")) +
+    labs(title = paste0("Sleep Apnea Patients Health Care Total Cost in ", input$cntry, ""), subtitle = paste0("Estimation"), x = "", y = "euros") +
+    custom_theme01
+})
+```
+
+
+
+
+Prevalence
+=======================================================================
+
+Row {.tabset .tabset-fade}
+-----------------------------------------------------------------------
+
+### Total
+
+```{r}
+renderPlot({
+  dplot <- daggr1() %>% filter(location_name == input$cntry)
+  
+  ## Incidence first year age plot
+  ggplot(dplot) +
+    geom_line(aes(x=year_id, y=100*prevalence)) +
+    geom_point(aes(x=year_id, y=100*prevalence)) +
+    scale_x_continuous(limits = c(limit_years[1]-1,limit_years[2]+1), breaks = seq(limit_years[1], limit_years[2],1)) +
+    scale_y_continuous(limits = c(0,input$prevalence_limit+10)) +
+    labs(title = "Sleep Apnea Prevalence", x="Year", y= "prevalence (%)") +
+    custom_theme02
+  
+})
+```
+
+
+### Sex
+
+```{r}
+renderPlot({
+  dplot <- daggr2() %>% filter(location_name == input$cntry)
+  
+  ## Incidence first year age plot
+  ggplot(dplot) +
+    geom_line(aes(x=year_id, y=100*prevalence, group=sex, color=sex)) +
+    geom_point(aes(x=year_id, y=100*prevalence, group=sex, color=sex)) +
+    scale_colour_manual(values = pal_sex) +
+    scale_x_continuous(limits = c(limit_years[1]-1,limit_years[2]+1), breaks = seq(limit_years[1], limit_years[2],1)) +
+    scale_y_continuous(limits = c(0,input$prevalence_limit+10)) +
+    labs(title = "Sleep Apnea Prevalence by sex", x="Year", y= "prevalence (%)") +
+    custom_theme02
+  
+})
+```
+
+### Age Group
+
+```{r}
+## Prevalence by sex and age
+renderPlot({
+  ggplot(dat_new() %>% filter(location_name == input$cntry)) +
+    geom_line(aes(x=year_id, y=100*prevalence, group=age_group_name, color=age_group_name)) +
+    geom_text(data = subset(dat_new() %>% filter(location_name == input$cntry), year_id == limit_years[2]), 
+              aes(label = age_group_name, x = limit_years[2], y =100*prevalence), colour = "black", hjust = -.1) +
+    scale_x_continuous(limits = c(limit_years[1]-1,limit_years[2]+1), breaks = seq(limit_years[1], limit_years[2],1)) +
+    scale_y_continuous(limits = c(0,input$prevalence_limit+10)) +
+    scale_color_manual(values = pal_age_group) +
+    facet_grid(~sex) +
+    labs(title = "Prevalence by age groups", x="", y="prevalence (%)") + 
+    custom_theme01
+})
+
+```
+
+
+### Yearly
+
+
+```{r}
+fillCol(height = 150, flex = c(NA, 1),
+        inputPanel(
+          selectInput("year", "Year:", choices = seq(limit_years[1],limit_years[2],1)),
+        ),
+        renderPlot({
+  dplot <- dat_new() %>% 
+    filter(year_id == input$year & location_name == input$cntry)
+  
+  ## Prevalence first year age plot
+  ggplot(dplot) +
+    geom_line(aes(x=age_group_name, y=100*prevalence, group=sex, color=sex)) +
+    geom_point(aes(x=age_group_name, y=100*prevalence, group=sex, color=sex)) +
+    scale_y_continuous(limits = c(0,100)) +
+    scale_colour_manual(values = pal_sex) +
+    labs(title = "", x="Age Group", y= "prevalence (%)") +
+    custom_theme01
+})
+)
+
+
+```
+
+
+
+Row {.tabset .tabset-fade}
+-----------------------------------------------------------------------
+
+### Patients
+
+```{r}
+## Prevalence by smthng
+renderPlot({
+  
+  dplot <- daggr1() %>% 
+    filter(location_name == input$cntry)
+  
+  ggplot(dplot) +
+    geom_bar(aes(x=year_id, y=pop_osa), fill = color_main, stat="identity") +
+    geom_text(data = dplot, aes(label = f1(round(pop_osa, -1)), x = year_id, y = round(pop_osa, -1)), colour = "black", vjust = -.1) +
+    scale_x_continuous(limits = c(limit_years[1]-1,limit_years[2]+1), breaks = seq(limit_years[1], limit_years[2],1)) +
+    scale_y_continuous(labels = comma_format(big.mark = " ", decimal.mark = ",")) +
+    labs(title = "Sleep Apnea Patients", x="", y="Patients") + 
+    custom_theme01
+})
+```
+
+
+### Sex
+
+```{r}
+## Prevalence by smthng
+renderPlot({
+  
+  dplot <- daggr2() %>% 
+    filter(location_name == input$cntry)
+  
+  ggplot(dplot) +
+    geom_bar(aes(x=year_id, y=pop_osa, group=sex, fill=sex), stat="identity", position = "dodge") +
+    geom_text(data = dplot, aes(label = f1(round(pop_osa, -1)), x = year_id, y = round(pop_osa, -1), group = sex), colour = "black", vjust = -.1, position = position_dodge(width = .9)) +
+    scale_x_continuous(limits = c(limit_years[1]-1,limit_years[2]+1), breaks = seq(limit_years[1], limit_years[2],1)) +
+    scale_y_continuous(labels = comma_format(big.mark = " ", decimal.mark = ",")) +
+    scale_fill_manual(values = pal_sex) +
+    labs(title = "Sleep Apnea Patients by sex", x="", y="Patients") + 
+    custom_theme02
+})
+```
+
+### Age Group
+
+```{r}
+## Prevalence by smthng
+renderPlot({
+  
+  dplot <- daggr3() %>% 
+    filter(location_name == input$cntry)
+  
+  ggplot(dplot) +
+    geom_bar(aes(x=year_id, y=pop_osa, group=age_group_name, fill=age_group_name), stat="identity", position = "dodge") +
+    scale_x_continuous(limits = c(limit_years[1]-1,limit_years[2]+1), breaks = seq(limit_years[1], limit_years[2],1)) +
+    scale_y_continuous(labels = comma_format(big.mark = " ", decimal.mark = ",")) +
+    scale_fill_manual(values = pal_age_group) +
+    labs(title = "Sleep Apnea Patients by age groups", x="", y="Patients") +
+    custom_theme02
+})
+```
+
+
+
+
+Cost
+=======================================================================
+
+
+
+Row {.tabset .tabset-fade}
+-----------------------------------------------------------------------
+
+### Cost per patient 
+
+```{r}
+renderPlot({
+  d <- daggr2() %>% 
+    filter(location_name == input$cntry)
+  
+  ggplot(d)+
+    geom_bar(aes(x=year_id, y=cost_patient, group=sex, fill=sex, colour=sex), stat="identity", position = "dodge") +
+    geom_text(data = d, aes(label = f1(round(cost_patient, -1)), x = year_id, y = round(cost_patient, -1), group = sex), colour = "black", vjust = -.1, position = position_dodge(width = .9)) +
+    scale_x_continuous(limits = c(limit_years[1]-1,limit_years[2]+1), breaks = seq(limit_years[1], limit_years[2],1)) +
+    scale_fill_manual(values = pal_sex)+
+    scale_colour_manual(values = pal_sex) +
+    labs(title = "Health Care Total Cost per patient", x="", y="Cost per patient (euros)") +
+    custom_theme02
+})
+```
+
+
+### Age Group
+
+```{r}
+renderPlot({
+  d <- daggr3() %>% 
+    filter(location_name == input$cntry)
+  
+  ggplot(d)+
+    geom_line(aes(x=year_id, y=cost_patient, group=age_group_name, color=age_group_name)) +
+    geom_point(aes(x=year_id, y=cost_patient, group=age_group_name, color = age_group_name)) +
+    geom_text(data = subset(d, year_id == "2035"), aes(label = age_group_name, x = 2035, y =cost_patient, group=age_group_name), colour = "black", hjust = -.1) +
+    scale_x_continuous(limits = c(limit_years[1]-1,limit_years[2]+1), breaks = seq(limit_years[1], limit_years[2],1)) +
+    # geom_bar(aes(x=year_id, y=cost_patient, group=age_group_name, fill=age_group_name, colour=age_group_name), stat="identity", position = "dodge") +
+    # scale_fill_manual(values = pal_age_group)+
+    scale_color_manual(values = pal_age_group) +
+    labs(title = "Health Care Total Cost per patient", x="", y="Cost per patient (euros)") +
+    custom_theme01
+})
+
+```
+
+
+### Sex and Age Group
+
+```{r}
+## Cost per patient (euros) by sex and age
+renderPlot({
+  ggplot(dat_new() %>% filter(location_name == input$cntry)) +
+    geom_line(aes(x=year_id, y=total_cost_patient, group=age_group_name, color=age_group_name)) +
+    geom_text(data = subset(dat_new() %>% filter(location_name == input$cntry), year_id == limit_years[2]), 
+              aes(label = age_group_name, x = limit_years[2], y =total_cost_patient), colour = "black", hjust = -.1) +
+    scale_x_continuous(limits = c(limit_years[1]-1,limit_years[2]+1), breaks = seq(limit_years[1], limit_years[2],1)) +
+    # scale_y_continuous(limits = c(0,input$prevalence_limit+10)) +
+    scale_color_manual(values = pal_age_group) +
+    facet_grid(~sex) +
+    labs(title = "Health Care Total Cost per patient (euros)", x="", y="Cost per patient (euros)") + 
+    custom_theme01
+})
+```
+
+
+
+Row {.tabset .tabset-fade}
+-----------------------------------------------------------------------
+
+
+### Total Cost 
+
+```{r}
+renderPlot({
+  d <- daggr1() %>% 
+    filter(location_name == input$cntry)
+  
+  ggplot(d) +
+    geom_bar(aes(x=year_id, y=total_cost), fill="#00897B", stat="identity") +
+    geom_text(data = d, aes(label = f1(round(total_cost, -1)), x = year_id, y = round(total_cost, -1)), colour = "black", vjust = -.1) +
+    scale_x_continuous(limits = c(limit_years[1]-1,limit_years[2]+1), breaks = seq(limit_years[1], limit_years[2],1)) +
+    scale_y_continuous(limits = c(0, max(d$total_cost)*1.2), 
+                       labels = comma_format(big.mark = " ",
+                                             decimal.mark = ",")) +
+    # scale_y_continuous(limits = c(0, max(d$total_cost)*1.2)) +
+    labs(title="Sleep Apnea Patients Health Care Total Cost", y="euros",x="Year") +
+    custom_theme01
+})
+```
+
+
+### Sex
+
+```{r}
+renderPlot({
+  d <- daggr2() %>% 
+    filter(location_name == input$cntry)
+  
+  ggplot(d) +
+    geom_bar(aes(x=year_id, y=total_cost, group = sex, fill=sex, colour =sex), stat="identity", position="dodge") +
+    geom_text(data = d, aes(label = f1(round(total_cost, -1)), x = year_id, y = round(total_cost, -1), group = sex), colour = "black", vjust = -.1, position = position_dodge(width = .9)) +
+    scale_x_continuous(limits = c(limit_years[1]-1,limit_years[2]+1), breaks = seq(limit_years[1], limit_years[2],1)) +
+    scale_y_continuous(labels = comma_format(big.mark = " ", decimal.mark = ",")) +
+    scale_fill_manual(values = pal_sex)+
+    scale_colour_manual(values = pal_sex) +
+    # scale_y_continuous(limits = c(min(d$total_cost) * 0.9, max(d$total_cost) * 1.1)) +
+    labs(title = "Sleep Apnea Patients Health Care Total cost", x="", y="euros") + 
+    theme(legend.position = "right", axis.text.x = element_text(angle = 0)) +
+    custom_theme01
+})
+```
+
+
+### Age Group
+
+```{r}
+renderPlot({
+  ## Cost by age
+  d <- daggr3() %>% 
+    filter(location_name == input$cntry)
+  
+  ggplot(d) +
+    geom_line(aes(x=year_id, y=total_cost, group=age_group_name, color = age_group_name), stat="identity", position = "dodge") +
+    geom_point(aes(x=year_id, y=total_cost, group=age_group_name, color = age_group_name)) +
+    geom_text(data = subset(d, year_id == "2035"), aes(label = age_group_name, x = 2035, y =total_cost,group=age_group_name), colour = "black", hjust = -.1) +
+    scale_x_continuous(limits = c(limit_years[1]-1,limit_years[2]+1), breaks = seq(limit_years[1], limit_years[2],1)) +
+    scale_y_continuous(labels = comma_format(big.mark = " ", decimal.mark = ",")) +
+    scale_color_manual(values = pal_age_group) +
+    labs(title = "Sleep Apnea Patients Health Care Total Cost by Age Groups", x="", y="euros") + 
+    custom_theme01
+  
+})
+```
+
+
+
+Intervention
+=======================================================================
+
+Row
+-----------------------------------------------------------------------
+
+### Effect Index {.value-box}
+
+```{r}
+
+renderValueBox({
+  valueBox(
+    color = color_main,
+    value = round((100 * sum(dat_intervention()[dat_intervention()$type == "normal",]$total_cost, na.rm = T) / sum(dat_intervention()[dat_intervention()$type == "intervention",]$total_cost, na.rm = T) - 100), 1), 
+    icon = "fa-square-poll-vertical")
+})
+```
+
+### Total Cost Save {.value-box}
+
+```{r}
+renderValueBox({
+  valueBox( 
+    color = color_main,
+    value = paste0(f1(round(sum(dat_intervention()[dat_intervention()$type == "normal",]$total_cost) - sum(dat_intervention()[dat_intervention()$type == "intervention",]$total_cost), -1)), " €"), 
+    icon = "fa-money"#,
+    # color = if (rate >= input$rateThreshold) "warning" else "primary"
+  )
+})
+```
+
+### Mean Difference Cost per Patient {.value-box}
+
+```{r}
+temp <- reactive({
+  d <- dat_intervention()
+  d <- d %>% 
+    group_by(location_name, type) %>% 
+    summarise(total_cost = sum(total_cost),
+              pop_osa = sum(pop_osa)) %>% 
+    mutate(
+      cost_patient = total_cost / pop_osa
+    )
+  round(d[d$type == "intervention",]$cost_patient - d[d$type == "normal",]$cost_patient , 0)
+})
+
+renderValueBox({
+  valueBox( 
+    color = color_main,
+    value = paste0(temp(), " €"),
+    icon = "fa-person"#,
+    # color = if (rate >= input$rateThreshold) "warning" else "primary"
+  )
+})
+```
+
+Row
+-----------------------------------------------------------------------
+
+### Intervention Overview {data-width=700}
+
+```{r}
+renderPlot({
+  dplot <- dat_intervention() %>% 
+    group_by(year_id, type) %>% 
+    summarise(
+      total_cost = sum(total_cost, na.rm = T)
+    )
+  ## Difference comparison
+  ggplot(dplot) +
+    geom_point(aes(x=year_id, y=total_cost, group=type, color=type)) +
+    geom_line(aes(x=year_id, y=total_cost, group=type, color=type)) +
+    scale_x_continuous(limits = c(limit_years[1], limit_years[2]+1),
+                       breaks = seq(limit_years[1], limit_years[2], 1) ) +
+    scale_y_continuous(labels = comma_format(big.mark = " ",
+                                             decimal.mark = ",")) +
+    scale_fill_manual(values = pal_intervention)+
+    scale_colour_manual(values = pal_intervention) +
+    labs(title = "Total Cost of Sleep Apnea", subtitle = "Cost calculated by intervention and normal groups", x= "Year", y= "Euros", color = "Simulation") +
+    custom_theme02
+  
+})
+```
+
+Row
+-----------------------------------------------------------------------
+
+### Cost Overview {data-width=700}
+
+```{r}
+renderPlot({
+  ## Saves money plot
+  dplot <- dat_intervention() %>% 
+    group_by(year_id, type) %>% 
+    summarise(total_cost = sum(total_cost)) %>% 
+    pivot_wider(names_from = "type", values_from = "total_cost") %>% 
+    mutate(
+      cost_diff = normal - intervention
+    ) %>% 
+    group_by(year_id) %>% 
+    arrange(year_id) %>% 
+    summarise(
+      cost_diff = sum(cost_diff)
+    ) %>% 
+    mutate(
+      cs = cumsum(cost_diff)
+    ) 
+ 
+  ggplot(dplot) +
+    geom_bar(aes(x=year_id, y=cs), fill = "#007FB6", color = "#007FB6", stat = "identity") +
+    scale_x_continuous(limits = c(limit_years[1], limit_years[2]+1),
+                       breaks = seq(limit_years[1], limit_years[2], 1) ) +
+    scale_y_continuous(labels = comma_format(big.mark = " ",
+                                             decimal.mark = ",")) +
+    # scale_y_reverse() +
+    labs(x="Year", y="Euros", subtitle="Cumulative Sum of Difference between Total Cost", title = "How much intervention saves") +
+    custom_theme01
+})
+```
+
+
+
+TABLE
+=======================================================================
+
+Row
+-----------------------------------------------------------------------
+
+### TABLE {data-width=700}
+
+
+```{r}
+##  TABLE: Pop, Incidence, Prevalence, Total-cost
+DT::dataTableOutput("tbl_summary")
+output$tbl_summary <- DT::renderDataTable(DT::datatable(daggr1() %>% 
+                                             filter(location_name == input$cntry) %>% 
+                                             select(location_name, year_id, prevalence, incidence, pop, pop_osa, n_osa_0v, total_cost, cost_patient) %>% 
+                                               rename(incidence_n = n_osa_0v), 
+                                             extensions = "Buttons",
+                                             options = list(pageLength =20, 
+                                                            searching = FALSE,
+                                                            autoWidth = TRUE,
+                                                            dom = "Bfrtip",
+                                                            buttons = c('copy', 'csv', 'excel')), 
+                                             rownames = F),
+                                          class = "display")
+```
+
+
+ABOUT
+=======================================================================
+
+Row
+-----------------------------------------------------------------------
+
+
+```{r}
+# fluidPage(
+# renderUI({
+#       withMathJax(HTML(readLines("README.html")))
+#    })
+# )
+
+fluidPage(
+renderUI({
+      withMathJax(HTML(readLines(rmarkdown::render(input = "README.md",
+                                                   output_format = rmarkdown::html_fragment(),
+                                                   quiet = TRUE
+                                                   ))))
+   })
+)
+```
+
+
+
+
+<!-- Diagnostics -->
+<!-- ======================================================================= -->
+
+<!-- Row {.tabset .tabset-fade data-height=850, data-width=700} -->
+<!-- ----------------------------------------------------------------------- -->
+
+
+<!-- ```{r} -->
+<!-- ##  TABLE: Pop, Incidence, Prevalence, Total-cost -->
+<!-- DT::dataTableOutput("tbl_temp1") -->
+<!-- output$tbl_temp1 <- DT::renderDataTable(DT::datatable(tbl_temp1())) -->
+<!-- ``` -->
+
+<!-- Row {.tabset .tabset-fade data-height=850, data-width=700} -->
+<!-- ----------------------------------------------------------------------- -->
+
+
+<!-- ```{r} -->
+<!-- ##  TABLE: Pop, Incidence, Prevalence, Total-cost -->
+<!-- DT::dataTableOutput("tbl_temp2") -->
+<!-- output$tbl_temp2 <- DT::renderDataTable(DT::datatable(tbl_temp2())) -->
+<!-- ``` -->
+
+
+
+<!-- Row {data-height=150} -->
+<!-- ----------------------------------------------------------------------- -->
+
+<!-- ### Settings  -->
+
+
+<!-- ```{r} -->
+
+<!-- fillCol(height = 150, flex = c(NA, 1), -->
+<!--         inputPanel( -->
+<!--           selectInput("one_year", "Year:", choices = seq(2020,2035,1)), -->
+<!--           radioButtons("diagcases", "diagcases", choices = c("pct","n")) -->
+<!--         ) -->
+<!-- ) -->
+
+<!-- ``` -->
+
+
+<!-- Row {.tabset .tabset-fade data-height=850, data-width=700} -->
+<!-- ----------------------------------------------------------------------- -->
+
+
+<!-- ### OSA POPULATION GROWTH -->
+
+<!-- ```{r} -->
+<!-- ## Prevalence by smthng -->
+<!-- renderPlot({ -->
+<!--   ggplot(daggr3() %>% filter(location_name == input$cntry)) + -->
+<!--     geom_line(aes(x=year_id, y=pop_osa, color=age_group_name, group=age_group_name), stat="identity") + -->
+<!--     geom_text(data = subset(daggr3() %>% filter(location_name == input$cntry), year_id == "2035"), aes(label = age_group_name, x = 2035, y =pop_osa), colour = "black", hjust = -.1) + -->
+<!--     scale_x_continuous(limits = c(2020, 2035)) + -->
+<!--     labs(title = "OSAPOP by age groups", x="", y="n") +  -->
+<!--     hrbrthemes::theme_ipsum() + -->
+<!--     theme(legend.position = "none")  -->
+<!-- }) -->
+<!-- ``` -->
+
+<!-- ### Incidence plotly -->
+
+<!-- ```{r} -->
+<!-- # renderPlotly({ -->
+<!-- #    -->
+<!-- #   dplot <- dat_new() %>%  -->
+<!-- #     filter(year_id == input$one_year & location_name == input$cntry) %>%  -->
+<!-- #     group_by(age_group_name) %>%  -->
+<!-- #     summarise( -->
+<!-- #       incidence_n = sum(n_osa_0v), -->
+<!-- #       pop = sum(pop) -->
+<!-- #     ) %>%  -->
+<!-- #     mutate( -->
+<!-- #       incidence = 100 * incidence_n / pop -->
+<!-- #     ) -->
+<!-- #    -->
+<!-- #   circles <- map2(dplot$age_group_name, dplot$incidence,  -->
+<!-- #                   ~list(type = "circle", -->
+<!-- #                         xanchor = .x, -->
+<!-- #                         yanchor = .y, -->
+<!-- #                         x0 = -4, x1 = 4, -->
+<!-- #                         y0 = -4, y1 = 4, -->
+<!-- #                         xsizemode = "pixel",  -->
+<!-- #                         ysizemode = "pixel", -->
+<!-- #                         fillcolor = "blue", -->
+<!-- #                         line = list(color = "transparent")) -->
+<!-- #   ) -->
+<!-- #   plot_ly() %>% -->
+<!-- #     add_lines(x = dplot$age_group_name, y = dplot$incidence, color = I("red")) %>% -->
+<!-- #     layout(shapes = circles) %>% -->
+<!-- #     config(edits = list(shapePosition = TRUE)) -->
+<!-- #   }) -->
+
+<!-- renderPlot({ -->
+<!--   dplot <- dat_new() %>% filter(year_id == input$one_year & location_name == input$cntry) -->
+
+<!--   # dplot <- dplot %>%  -->
+<!--   #   mutate( -->
+<!--   #     incidence = input$inc * incidence -->
+<!--   #   ) -->
+
+<!--   ## Incidence first year age plot -->
+<!--   ggplot(dplot) + -->
+<!--     geom_line(aes(x=age_group_name, y=100*incidence, group=sex, color=sex)) + -->
+<!--     geom_point(aes(x=age_group_name, y=100*incidence, group=sex, color=sex)) + -->
+<!--     scale_y_continuous(limits = c(0,10.0)) + -->
+<!--     labs(title = "", x="Age Group", y= "incidence (%)") + -->
+<!--     scale_colour_manual(values = c("#ED5200", "#3B99B1")) + -->
+<!--     hrbrthemes::theme_ipsum() -->
+
+<!-- }) -->
+<!-- ``` -->
+
+
+<!-- ### Prevalence (year) -->
+
+<!-- ```{r} -->
+<!-- renderPlot({ -->
+<!--   dplot <- dat_new() %>% filter(year_id == input$one_year & location_name == input$cntry) -->
+
+<!--   ## Prevalence first year age plot -->
+<!--   ggplot(dplot) + -->
+<!--     geom_line(aes(x=age_group_name, y=100*prevalence, group=sex, color=sex)) + -->
+<!--     geom_point(aes(x=age_group_name, y=100*prevalence, group=sex, color=sex)) + -->
+<!--     labs(title = "", x="Age Group", y= "prevalence (%)") + -->
+<!--     scale_y_continuous(limits = c(0,100)) + -->
+<!--     scale_colour_manual(values = c("#ED5200", "#3B99B1")) + -->
+<!--     hrbrthemes::theme_ipsum() -->
+<!-- }) -->
+<!-- ``` -->
+
+
+
+<!-- ### Incidence (year) -->
+
+<!-- ```{r} -->
+<!-- renderPlot({ -->
+<!--   dplot <- dat_new() %>% filter(year_id == input$one_year & location_name == input$cntry) -->
+
+<!--   ## Incidence first year age plot -->
+<!--   ggplot(dplot) + -->
+<!--     geom_line(aes(x=age_group_name, y=100*incidence, group=sex, color=sex)) + -->
+<!--     geom_point(aes(x=age_group_name, y=100*incidence, group=sex, color=sex)) + -->
+<!--     labs(title = "", x="Age Group", y= "incidence (%)") + -->
+<!--     scale_colour_manual(values = c("#ED5200", "#3B99B1")) + -->
+<!--     scale_y_continuous(limits = c(0, 12.0), breaks = c(2,4,6,8,10,12)) + -->
+<!--     hrbrthemes::theme_ipsum() -->
+
+<!-- }) -->
+<!-- ``` -->
+
+<!-- ### Incidence (timeline) -->
+
+<!-- ```{r} -->
+<!-- renderPlot({ -->
+<!--   dplot <- daggr2() %>% filter(location_name == input$cntry) -->
+
+<!--   ## Incidence first year age plot -->
+<!--   ggplot(dplot) + -->
+<!--     geom_line(aes(x=year_id, y=100*incidence, group=sex, color=sex)) + -->
+<!--     geom_point(aes(x=year_id, y=100*incidence, group=sex, color=sex)) + -->
+<!--     labs(title = "", x="Year", y= "incidence (%)") + -->
+<!--     scale_colour_manual(values = c("#ED5200", "#3B99B1")) + -->
+<!--     hrbrthemes::theme_ipsum() -->
+
+<!-- }) -->
+<!-- ``` -->
+
+<!-- ### Cases 0 to 2 y pop -->
+
+<!-- ```{r} -->
+
+<!-- renderPlot({ -->
+<!--   if(input$diagcases == "pct"){ -->
+<!--     dplot <- daggr1() %>%  -->
+<!--       pivot_longer(c("pct_osa_0v", "pct_osa_1v", "pct_osa_2v"), names_to = "dg_osa", values_to = "pct") %>%  -->
+<!--       filter(location_name == input$cntry) -->
+
+<!--     ggplot(data = dplot) + -->
+<!--       geom_line(aes(x=year_id, y=pct, )) + -->
+<!--       facet_wrap(~dg_osa) -->
+<!--   }else{ -->
+<!--     dplot <- daggr1() %>%  -->
+<!--       pivot_longer(c("n_osa_0v", "n_osa_1v", "n_osa_2v"), names_to = "dg_osa", values_to = "n") %>%  -->
+<!--       filter(location_name == input$cntry) -->
+
+<!--     ggplot(data = dplot) + -->
+<!--       geom_line(aes(x=year_id, y=n, )) + -->
+<!--       facet_wrap(~dg_osa) -->
+<!--   }  -->
+
+<!-- }) -->
+
+<!-- ``` -->
+
+<!-- ### Cases 99y pop -->
+
+<!-- ```{r} -->
+
+<!-- renderPlot({ -->
+
+<!--   if(input$diagcases == "pct"){ -->
+<!--     dplot <- daggr1() %>%  -->
+<!--       pivot_longer(c("pct_osa_99v"), names_to = "dg_osa", values_to = "pct") %>%  -->
+<!--       filter(location_name == input$cntry) -->
+
+<!--     ggplot(data = dplot) + -->
+<!--       geom_line(aes(x=year_id, y=pct, )) + -->
+<!--       facet_wrap(~dg_osa) -->
+<!--   }else{ -->
+<!--     dplot <- daggr1() %>%  -->
+<!--       pivot_longer(c("n_osa_99v"), names_to = "dg_osa", values_to = "n") %>%  -->
+<!--       filter(location_name == input$cntry) -->
+
+<!--     ggplot(data = dplot) + -->
+<!--       geom_line(aes(x=year_id, y=n, )) + -->
+<!--       facet_wrap(~dg_osa) -->
+<!--   }  -->
+
+
+
+<!-- }) -->
+
+<!-- ``` -->
+
+
+
+<!-- ### OSA Patients {data-width=700} -->
+
+
+<!-- ```{r} -->
+<!-- ## New patients -->
+<!-- renderPlot({ -->
+<!--   d <- dat_new() %>%  -->
+<!--     filter(location_name == input$cntry) # %>% # filter(year_id == 2020) -->
+
+<!--   ggplot(d) + -->
+<!--     geom_bar(aes(x=age_group_name, y=pop_osa, fill=sex, colour=sex, group=sex),  stat = "identity") + -->
+<!--     scale_fill_manual(values = c("#ED5200", "#3B99B1"))+ -->
+<!--     scale_colour_manual(values = c("#ED5200", "#3B99B1"))+ -->
+<!--     facet_wrap(~year_id, nrow = 2) + -->
+<!--     labs(title = "OSAPOP", x="", y="") +  -->
+<!--     theme(legend.position = "bottom", axis.text.x = element_text(angle = 90))  -->
+
+<!-- }) -->
+<!-- ``` -->
+
