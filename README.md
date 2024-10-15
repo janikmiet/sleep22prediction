@@ -118,7 +118,7 @@ These estimation are done by few assumptions using datasets which were available
 
 ## ACKNOWLEDGEMENT  
 
-Special thanks for all of the people from the working group and persons who gave feedback on developing the application:
+Special thanks for all of the people from the working group and persons who gave feedback on developing the application. Especially Anna But and Reijo Sund.
 
 
 ![](img/uef.png)
