@@ -1,0 +1,11 @@
+## Clean environment setup ----
+install.packages("rmarkdown")
+install.packages("tidyr")
+install.packages("arrow")
+install.packages("plotly")
+install.packages("RColorBrewer")
+install.packages("hrbrthemes") 
+install.packages("dplyr") 
+install.packages("paletteer")
+install.packages("flexdashboard")
+install.packages("scales")

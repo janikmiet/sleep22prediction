@@ -14,10 +14,10 @@ runtime: shiny
 
 ```{r setup, include=FALSE}
 library(flexdashboard)
-library(plotly)
+# library(plotly)
 library(RColorBrewer)
 library(hrbrthemes)
-library(tidyverse)
+# library(tidyverse)
 library(dplyr)
 library(paletteer)
 library(scales)
