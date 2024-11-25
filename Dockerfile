@@ -11,7 +11,7 @@ xtail \
 wget
 
 ## Install packages needed for running the app
-RUN R -e "install.packages(c('rmarkdown', 'duckdb', 'DT', 'ggplot2', 'tidyr', 'arrow', 'RColorBrewer', 'flexdashboard', 'hrbrthemes', 'dplyr', 'paletteer', 'scales', 'ggthemes'), repos='https://cloud.r-project.org/')"
+RUN R -e "install.packages(c('rmarkdown', 'duckdb', 'DT', 'ggplot2', 'tidyr', 'arrow', 'RColorBrewer', 'flexdashboard', 'hrbrthemes', 'dplyr', 'paletteer', 'scales', 'ggplot2', 'ggthemes'), repos='https://cloud.r-project.org/')"
 
 ## Copy app to image
 COPY . /srv/shiny-server/shiny_osaprediction
