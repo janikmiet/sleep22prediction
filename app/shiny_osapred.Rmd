@@ -1,11 +1,11 @@
 ---
 title: "Sleep Apnea Estimation"
-author: "ver1.91"
+author: "ver1.92"
 output: 
   flexdashboard::flex_dashboard:
     orientation: rows
     social: menu
-    source_code: 'https://osacost.com'
+    source_code: 'https://github.com/janikmiet/sleep22prediction/'
     theme: 
       version: 4
       bootswatch: lux
@@ -17,7 +17,6 @@ library(flexdashboard)
 # library(plotly)
 library(RColorBrewer)
 library(hrbrthemes)
-# library(tidyverse)
 library(dplyr)
 library(paletteer)
 library(scales)
