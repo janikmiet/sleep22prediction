@@ -21,9 +21,12 @@ library(hrbrthemes)
 library(dplyr)
 library(paletteer)
 library(scales)
+library(ggplot2)
 
 options(scipen = 999)
 limit_years <- c(2022, 2035) ## limiting years shown in application
+
+source("global.R", local = TRUE)
 
 ## Colors and themes 
 f1 <- function(num) { format(num, big.mark = ' ')}
@@ -67,7 +70,7 @@ custom_theme02 <-
 
 ```{r datas, include=FALSE}
 ## Base data
-data_folder <- "data/"
+data_folder <- "./data/"
 dat <-  read_parquet(paste0(data_folder, "osasimulation.parquet"))
 benj <- read_parquet(paste0(data_folder, "osa_benjafield.parquet"))
 gdp <-  read_parquet(paste0(data_folder, "gdp.parquet"))

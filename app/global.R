@@ -1,8 +1,9 @@
 library(dplyr)
-# library(tidyverse)
 library(tidyr)
 library(arrow)
 library(ggplot2)
+
+setwd("/srv/shiny-server/shiny_osaprediction/") ## Only for docker! Quick fix to enable data.
 
 # PREDICTION: Creates osasimulation
 create_osapred <- function(locations=c("Albania","Armenia","Austria","Azerbaijan","Belarus","Belgium","Bosnia and Herzegovina","Bulgaria","Croatia","Cyprus","Denmark","Estonia","Finland","France","Georgia","Germany","Greece","Hungary","Iceland","Ireland","Italy","Kazakhstan","Latvia","Lithuania","Luxembourg","Malta","Montenegro","Netherlands","Norway","Poland","Portugal","Romania","Serbia","Slovakia","Slovenia","Spain","Sweden","Switzerland","Turkey","Ukraine","United Kingdom" ), 
@@ -34,7 +35,7 @@ create_osapred <- function(locations=c("Albania","Armenia","Austria","Azerbaijan
   
   
   ver = "1.50"
-  library(tidyverse)
+  # library(tidyverse)
   library(dplyr)
   library(ggplot2)
   library(arrow)
@@ -56,17 +57,17 @@ create_osapred <- function(locations=c("Albania","Armenia","Austria","Azerbaijan
   
   # OPEN ALL DATAS ----
   if(TRUE){
-    pop_full <- read_parquet(paste0("data/populations.parquet")) ## Populaatio ennusteet 2020-
-    osa_benjafield_full <- read_parquet("data/osa_benjafield.parquet") %>% 
+    pop_full <- read_parquet(paste0("./data/populations.parquet")) ## Populaatio ennusteet 2020-
+    osa_benjafield_full <- read_parquet("./data/osa_benjafield.parquet") %>% 
       mutate(prev = `Moderate-Severe`) ## Aloitusprevalenssi vakiot
-    deat_rate_full <- read_parquet("data/WHO_drates.parquet") ## Death rate
-    cost_osa <- read_parquet("data/cost_osa.parquet")
+    deat_rate_full <- read_parquet("./data/WHO_drates.parquet") ## Death rate
+    cost_osa <- read_parquet("./data/cost_osa.parquet")
     ## Ratiot
-    ratio_pop_agegroup_to_age <- read_parquet("data/ratio_pop_agegroup_to_age.parquet") ### Populaatio painokertoimen
-    ratio_prev_total_to_age <- read_parquet("data/ratio_prev_total_to_age.parquet") ## TODO tarkista kaytetaanko?
-    ratio_prev_to_wide <- read_parquet("data/ratio_prev_to_wide.parquet") ## insidenssi ratiot
-    ratio_inc_to_1v2v <- read_parquet("data/ratio_inc_to_1v2v.parquet") ## insidenssi ratiot 1v 2v # TODO UUUS RATIO
-    ratio_incidence_avg <- read_parquet("data/ratio_incidence_avg.parquet") %>% 
+    ratio_pop_agegroup_to_age <- read_parquet("./data/ratio_pop_agegroup_to_age.parquet") ### Populaatio painokertoimen
+    ratio_prev_total_to_age <- read_parquet("./data/ratio_prev_total_to_age.parquet") ## TODO tarkista kaytetaanko?
+    ratio_prev_to_wide <- read_parquet("./data/ratio_prev_to_wide.parquet") ## insidenssi ratiot
+    ratio_inc_to_1v2v <- read_parquet("./data/ratio_inc_to_1v2v.parquet") ## insidenssi ratiot 1v 2v # TODO UUUS RATIO
+    ratio_incidence_avg <- read_parquet("./data/ratio_incidence_avg.parquet") %>% 
       filter(avg == "1yr") 
   }
   
