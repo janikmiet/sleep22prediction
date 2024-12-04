@@ -1,6 +1,6 @@
 # Sleep Apnea Estimation
 
-![](img/alllogos.png)
+![](app/img/alllogos.png)
 
 Application simulates Sleep Apnea prevalences and costs to selected country. Available Countries:
 *Albania, Armenia, Austria, Azerbaijan, Belarus, Belgium, Bosnia and Herzegovina, Bulgaria, Croatia, Cyprus, Denmark, Estonia, Finland, France, Georgia, Germany, Greece, Hungary, Iceland, Ireland, Italy, Kazakhstan, Latvia, Lithuania, Luxembourg, Malta, Montenegro, Netherlands, Norway, Poland, Portugal, Romania, Serbia, Slovakia, Slovenia, Spain, Sweden, Switzerland, Turkey, Ukraine, United Kingdom*
@@ -163,6 +163,6 @@ These estimation are done by few assumptions using datasets which were available
 Special thanks for all of the people from the working group and persons who gave feedback on developing the application. Especially Anna But and Reijo Sund.
 
 
-![](img/uef.png)
+![](app/img/uef.png)
 
 
