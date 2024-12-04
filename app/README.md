@@ -1,12 +1,59 @@
-## Sleep Apnea Estimation
-
+# Sleep Apnea Estimation
 
 ![](img/alllogos.png)
 
-Application simulates Sleep Apnea prevalences and costs for presented countries:
-
+Application simulates Sleep Apnea prevalences and costs to selected country. Available Countries:
 *Albania, Armenia, Austria, Azerbaijan, Belarus, Belgium, Bosnia and Herzegovina, Bulgaria, Croatia, Cyprus, Denmark, Estonia, Finland, France, Georgia, Germany, Greece, Hungary, Iceland, Ireland, Italy, Kazakhstan, Latvia, Lithuania, Luxembourg, Malta, Montenegro, Netherlands, Norway, Poland, Portugal, Romania, Serbia, Slovakia, Slovenia, Spain, Sweden, Switzerland, Turkey, Ukraine, United Kingdom*
 
+![](prediction.png)
+
+
+# Installation / Launch
+
+## Terminal App Run
+
+```
+R -e "shiny::runApp('app/')"
+```
+
+
+## Docker Image
+
+Use docker to launch app
+
+```
+docker build  --no-cache -t sleep22prediction . 
+docker run --name shiny_sleep22prediction --rm -d -p 3838:3838 sleep22prediction
+```
+
+## ShinyServer / rsconnect
+
+Modify and use script `deploy.R`
+
+
+
+# Notes
+
+1. Install libraries 
+
+Check the `install_packages.R` script for necessary packages needed.
+
+
+2. Baseline data
+
+In the application folder there is `global.R` script which has a function, which creates osa predictions. This function creates the data for the prediction baseline. Feel free to inspect the function more.
+
+```
+source("./app/global.R")
+create_osapred(WRITE_DATA = TRUE)
+```
+
+
+
+
+# METHOD USED
+
+Simulation is done by using statistical weights which are calculated from Finnish registry dataset. In Finnish registry dataset we have a full population of people who have got diagnosed sleep apnea by age and gender. In short, we use these distributions to weight to other countries populations to estimate sleep apnea patients.
 
 ## ASSUMPTIONS
 
@@ -21,12 +68,7 @@ For these assumptions application has options to fine tune estimation:
 3. Costs can be optionally fixed by GDP ratio
 
 
-
-## METHOD
-
-Simulation is done by using statistical weights which are calculated from Finnish registry dataset. In Finnish registry dataset we have a full population of people who have got diagnosed sleep apnea by age and gender. In short, we use these distributions to weight to other countries populations to estimate sleep apnea patients.
-
-### Incidences
+## Incidences
 
 We calculated incidence age and sex distribution in 2022 from Finnish registry dataset which we used as a base distribution for incidences.  We noticed that incidence distribution for earlier years seems to be similar, but only total incidence changes. Incidence distribution is proportioned to population size by age and sex.
 
