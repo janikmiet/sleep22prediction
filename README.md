@@ -72,7 +72,7 @@ For these assumptions application has options to fine tune estimation:
 
 We calculated incidence age and sex distribution in 2022 from Finnish registry dataset which we used as a base distribution for incidences.  We noticed that incidence distribution for earlier years seems to be similar, but only total incidence changes. Incidence distribution is proportioned to population size by age and sex.
 
-![Plot: Incidence distribution by age](img/incidence.png)
+![Plot: Incidence distribution by age](app/img/incidence.png)
 
 
 ### Prevalences
